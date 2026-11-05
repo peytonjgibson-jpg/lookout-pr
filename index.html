@@ -354,9 +354,9 @@ function analyze(winds){
 // verdict on estimated seconds vs calm air (negative = faster)
 function verdictFor(delta){
   if(delta<=-40) return ['YES. Send it.','go'];
-  if(delta<=-12) return ['Yes. Tailwind’s on.','go-soft'];
-  if(delta<12) return ['Eh. It’s a legs day.','meh'];
-  if(delta<40) return ['Not today.','no-soft'];
+  if(delta<=-12) return ['Yes. Free seconds out there.','go-soft'];
+  if(delta<12) return ['No help, no excuses.','meh'];
+  if(delta<40) return ['Nah. Wind’s not your friend.','no-soft'];
   return ['Absolutely not.','no'];
 }
 function currentWinds(){ return WIND.map(loc=>({s:loc.current.wind_speed_10m, d:loc.current.wind_direction_10m, g:loc.current.wind_gusts_10m})); }

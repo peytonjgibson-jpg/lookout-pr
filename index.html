@@ -47,6 +47,9 @@
   .stations{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:-14px 0 24px;font-size:13px}
   .stations a{text-decoration:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;color:var(--ink)}
   .stations a:hover{border-color:var(--ink)}
+  #hourly rect.bar{transition:opacity .12s}
+  #hourly svg.hov rect.bar{opacity:.35}
+  #hourly svg.hov rect.bar.on{opacity:1;stroke:#1d1b18;stroke-width:2}
   .pick{margin:-6px 0 18px;padding:10px 14px;border-radius:12px;background:var(--card);border:1px solid var(--line);font-size:14px;color:var(--muted);min-height:42px;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
   .pick b{color:var(--ink)} .pick b.pos{color:var(--go)} .pick b.neg{color:var(--no)}
   .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:18px}
@@ -170,7 +173,7 @@
 
   <section class="block">
     <h2>FAQ</h2>
-    <details open>
+    <details>
       <summary>How do we calculate the wind?</summary>
       <p>We trace the road from the Pillars to the Post (using OpenStreetMap) and split it into ~100 m pieces, noting which way you're riding on each. For every piece we work out how much of the wind is at your back versus in your face. A 10 mph west wind is a 10 mph headwind when you're riding west, a 10 mph tailwind riding east, and roughly nothing riding north or south. Lookout switchbacks so much that the same wind usually helps on one leg and hurts on the next, which is why we check every piece.</p>
       <p>The "On the climb" number is the average of all those pieces, weighted by length. The verdict goes a step further: it estimates your speed on every piece from its grade, your power and the wind, then adds up the seconds. That matters because a headwind costs more time than the same tailwind gives back.</p>
@@ -565,6 +568,9 @@ function renderHourly(){
   const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',role:'img','aria-label':'Hourly average tailwind for the next three days'},box);
   [-maxAbs/2,0,maxAbs/2].forEach(v=>{ el('line',{x1:L,x2:W-Rp,y1:Y(v),y2:Y(v),stroke:v===0?'#c9c1b4':'#efe7d8'},svg); const t=el('text',{x:L-6,y:Y(v)+4,'font-size':10,'text-anchor':'end',fill:'#9a9184'},svg); t.textContent=v===0?'0s':(v>0?'+':'−')+Math.round(Math.abs(v))+'s'; });
   const best=hours.reduce((a,b)=>b.saved>a.saved?b:a);
+  // hover column + bar highlight
+  const col=el('rect',{x:0,y:T,width:barW,height:H-T-B,rx:4,fill:'#1d1b18',opacity:0,'pointer-events':'none'},svg);
+  const hourHL=(bar,cx)=>{ svg.classList.toggle('hov',!!bar); svg.querySelectorAll('rect.bar.on').forEach(b=>b.classList.remove('on')); if(bar){ bar.classList.add('on'); col.setAttribute('x',cx); col.setAttribute('opacity',.06); } else col.setAttribute('opacity',0); };
   let x=L, lastDay=null;
   hours.forEach(hr=>{
     const day=hr.iso.slice(0,10);
@@ -572,13 +578,16 @@ function renderHourly(){
     if(day!==lastDay){ const t=el('text',{x,y:H-8,'font-size':11,'font-weight':600,fill:'#1d1b18'},svg); t.textContent=dayLabel(hr.iso,today); }
     lastDay=day;
     const y0=Y(0), y1=Y(hr.saved);
-    el('rect',{x:x+1,y:Math.min(y0,y1),width:Math.max(1,barW-2),height:Math.max(1.5,Math.abs(y1-y0)),rx:2,fill:tailColor(hr.saved/5)},svg);
+    const bar=el('rect',{class:'bar',x:x+1,y:Math.min(y0,y1),width:Math.max(1,barW-2),height:Math.max(1.5,Math.abs(y1-y0)),rx:2,fill:tailColor(hr.saved/5)},svg);
     const p=parseLocal(hr.iso);
     if(p.h%3===0){ const t=el('text',{x:x+barW/2,y:H-B+14,'font-size':9,'text-anchor':'middle',fill:'#9a9184'},svg); t.textContent=hourLabel(p.h); }
     if(hr===best && hr.saved>0){ el('circle',{cx:x+barW/2,cy:y1-9,r:4,fill:'#1f9d6a'},svg); }
-    const hit=el('rect',{x,y:T,width:barW,height:H-T-B,fill:'transparent'},svg);
-    hit.addEventListener('mousemove',e=>showTip(e,`${dayLabel(hr.iso,today)} ${hourLabel(p.h)}<br>${fmtSec(hr.delta)} vs calm · net ${fmt1(hr.avg)} mph<br>wind ${compass(hr.dir)} ${hr.spd.toFixed(0)}, gusts ${Math.round(hr.gust)}`));
-    hit.addEventListener('mouseleave',hideTip);
+    const hit=el('rect',{x,y:T,width:barW,height:H-T-B,fill:'transparent',style:'cursor:pointer'},svg);
+    const bx=x, tipTxt=`${dayLabel(hr.iso,today)} ${hourLabel(p.h)}<br>${fmtSec(hr.delta)} vs calm · net ${fmt1(hr.avg)} mph<br>wind ${compass(hr.dir)} ${hr.spd.toFixed(0)}, gusts ${Math.round(hr.gust)}`;
+    const on=e=>{ showTip(e,tipTxt); hourHL(bar,bx); };
+    hit.addEventListener('mousemove',on);
+    hit.addEventListener('click',on);
+    hit.addEventListener('mouseleave',()=>{ hideTip(); hourHL(null); });
     x+=barW;
   });
   // windows: consecutive daylight hours worth >= 10 s

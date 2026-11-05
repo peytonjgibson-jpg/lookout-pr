@@ -71,6 +71,14 @@
   .rider{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end}
   .rider label{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;flex-direction:column;gap:5px}
   .rider input{font:600 18px var(--sans);width:120px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+  .fb{display:flex;flex-direction:column;gap:12px}
+  .fb label{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:14px;flex:1;min-width:200px}
+  .fb label i{font-style:normal;font-weight:400;color:var(--muted)}
+  .fb textarea,.fb input{font:16px var(--sans);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);width:100%}
+  .fb textarea{resize:vertical}
+  .fb-row{display:flex;flex-wrap:wrap;gap:12px}
+  .fb-status{font-size:14px;color:var(--muted)}
+  .fb-status.ok{color:var(--go)} .fb-status.bad{color:var(--no)}
   details{border-top:1px solid var(--line);padding:14px 0}
   details:last-of-type{border-bottom:1px solid var(--line)}
   summary{cursor:pointer;font-weight:700;font-size:18px;list-style:none;display:flex;justify-content:space-between;gap:12px}
@@ -177,16 +185,30 @@
       <p>It's a rough estimate of how many seconds the wind adds or saves compared to a perfectly still day at the same power. It assumes a road position (CdA 0.32 m²), decent tires (Crr 0.005), the thinner air at ~6,500 ft, and that wind at rider height is about 70% of the 10 m forecast. It's a ballpark, not gospel. Trees, rock walls and the Windy Saddle all do their own thing.</p>
     </details>
     <details>
-      <summary>Isn't it always a headwind?</summary>
-      <p>Often, yes. Strong westerlies spilling down off the Divide, the classic Front Range pattern from fall through spring, tend to hurt more than help. Your best bets are easterly "upslope" days, which often follow a cold front or show up on warm afternoons. Check back. They do happen.</p>
-    </details>
-    <details>
       <summary>Is this exactly my Strava segment?</summary>
       <p>Close. We start at the first hairpin above 19th Street (the Pillars) and finish at the point on Lookout Mountain Road closest to the Buffalo Bill turnoff (the Post). Distance may differ by a few hundred feet from whichever segment you're chasing.</p>
     </details>
     <details>
       <summary>Anything else?</summary>
       <p>Lookout is shared with cars, runners and a lot of other people chasing PRs. Hold your line, don't cut the switchbacks, and save the heroics for the uphill.</p>    </details>
+  </section>
+
+  <section class="block" id="feedback">
+    <h2>Feedback</h2>
+    <p class="lede">Something off? Got boned by a "tailwind"? Ideas for what to add? Let us know.</p>
+    <form class="card fb" name="feedback" method="POST" data-netlify="true" netlify-honeypot="bot-field">
+      <input type="hidden" name="form-name" value="feedback">
+      <p hidden><label>Leave this empty <input name="bot-field"></label></p>
+      <label><span>Your feedback</span><textarea name="message" rows="4" required placeholder="The wind said tailwind. My legs said otherwise…"></textarea></label>
+      <div class="fb-row">
+        <label><span>Name <i>(optional)</i></span><input name="name" autocomplete="name"></label>
+        <label><span>Email <i>(optional, if you want a reply)</i></span><input name="email" type="email" autocomplete="email"></label>
+      </div>
+      <div class="fb-row" style="align-items:center">
+        <button type="submit" id="fbSend">Send feedback</button>
+        <span id="fbStatus" class="fb-status" role="status"></span>
+      </div>
+    </form>
   </section>
 
   <footer>
@@ -618,6 +640,18 @@ function smooth(a,r){ return a.map((_,i)=>{ let s=0,n=0; for(let j=Math.max(0,i-
 const saved=store.get('lookoutpr-rider'); if(saved){ $('watts').value=saved.P; $('lbs').value=saved.lbs; }
 ['watts','lbs'].forEach(id=>$(id).addEventListener('change',()=>{ store.set('lookoutpr-rider',{P:+$('watts').value,lbs:+$('lbs').value}); if(WIND){ renderNow(); renderHourly(); } }));
 $('refresh').addEventListener('click',refreshWind);
+// feedback: posts to Netlify Forms in the background (Netlify emails it on); the page never shows where it goes
+document.querySelector('form.fb').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const f=e.target, btn=$('fbSend'), st=$('fbStatus');
+  btn.disabled=true; st.className='fb-status'; st.textContent='Sending…';
+  try{
+    const r=await fetch('/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(new FormData(f)).toString()});
+    if(!r.ok) throw new Error(r.status);
+    f.reset(); st.className='fb-status ok'; st.textContent='Thanks! Got it.';
+  }catch(err){ st.className='fb-status bad'; st.textContent='Couldn’t send that. Try again in a bit.'; }
+  finally{ btn.disabled=false; }
+});
 $('copyDraft').addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText($('draft').textContent); $('copyDraft').textContent='Copied'; setTimeout(()=>$('copyDraft').textContent='Copy',1500);}catch(e){ $('copyDraft').textContent='Select & copy'; } });
 setInterval(()=>{ if(WIND && document.visibilityState==='visible') refreshWind(); }, 10*60*1000);
 boot();

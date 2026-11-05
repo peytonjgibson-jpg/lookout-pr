@@ -47,6 +47,8 @@
   .stations{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:-14px 0 24px;font-size:13px}
   .stations a{text-decoration:none;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;color:var(--ink)}
   .stations a:hover{border-color:var(--ink)}
+  .pick{margin:-6px 0 18px;padding:10px 14px;border-radius:12px;background:var(--card);border:1px solid var(--line);font-size:14px;color:var(--muted);min-height:42px;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+  .pick b{color:var(--ink)} .pick b.pos{color:var(--go)} .pick b.neg{color:var(--no)}
   .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:18px}
   .grid2{display:grid;grid-template-columns:1.1fr 1fr;gap:18px;align-items:stretch}
   .card h3{margin:0 0 4px;font-size:15px;font-weight:700}
@@ -128,11 +130,12 @@
     </div>
     <div class="card" style="display:flex;flex-direction:column">
       <h3>Profile</h3>
-      <p class="hint">Where on the climb the wind helps and hurts.</p>
+      <p class="hint">Where on the climb the wind helps and hurts. Linked to the map.</p>
       <div id="profile" style="flex:1;min-height:200px"></div>
       <div class="stats" id="segStats"></div>
     </div>
   </div>
+  <div id="pick" class="pick">Hover or tap the map or profile to see the same spot on both.</div>
 
   <section class="block">
     <h2>When should you text the group chat?</h2>
@@ -345,6 +348,52 @@ const tip=$('tip');
 function showTip(e,html){ tip.innerHTML=html; tip.style.opacity=1; tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY+12)+'px'; }
 const hideTip=()=>tip.style.opacity=0;
 
+// ---------- linked map <-> profile highlight ----------
+// Hover (or tap) a spot on either chart and the same piece of road lights up on both.
+// Click/tap pins it; click the same spot or empty space to unpin.
+const LINK={map:null, prof:null, res:null, pinned:null};
+function bindLink(node,i){
+  node.addEventListener('mousemove',e=>{ showTip(e,linkTip(i)); if(LINK.pinned==null) linkShow(i); });
+  node.addEventListener('mouseleave',()=>{ hideTip(); linkShow(LINK.pinned); });
+  node.addEventListener('click',e=>{ e.stopPropagation(); linkPin(LINK.pinned===i?null:i); });
+}
+function linkPin(i){ LINK.pinned=i; linkShow(i); }
+function segInfo(i){
+  const s=SEGS.segs[i], t=LINK.res?LINK.res.tails[i]:null;
+  const mi=((s.d0+s.d1)/2/1609.34), ft=s.e0!=null?Math.round((s.e0+s.e1)/2*3.28084):null;
+  return {s,t,mi,ft,heading:compass(bearing(s.pts[0],s.pts[s.pts.length-1])),grade:(s.grade*100).toFixed(1)};
+}
+function linkTip(i){
+  const d=segInfo(i);
+  return `mile ${d.mi.toFixed(2)}${d.ft?` · ${d.ft.toLocaleString()} ft`:''} · ${d.grade}%<br>heading ${d.heading}`+(d.t!=null?` · ${d.t>=0?'tailwind':'headwind'} ${Math.abs(d.t).toFixed(1)} mph`:'');
+}
+function linkShow(i){
+  const pick=$('pick');
+  if(LINK.map) LINK.map.hl.innerHTML='';
+  if(LINK.prof) LINK.prof.hl.innerHTML='';
+  if(i==null){ pick.innerHTML='Hover or tap the map or profile to see the same spot on both.'; return; }
+  const d=segInfo(i), s=d.s, col=d.t!=null?tailColor(d.t):'#9a9184';
+  if(LINK.map){
+    const {P,hl}=LINK.map, pts=s.pts.map(q=>P(q).join(',')).join(' ');
+    el('polyline',{points:pts,fill:'none',stroke:'#1d1b18','stroke-width':14,'stroke-linecap':'round','stroke-linejoin':'round'},hl);
+    el('polyline',{points:pts,fill:'none',stroke:col,'stroke-width':8,'stroke-linecap':'round','stroke-linejoin':'round'},hl);
+    const m=P(s.pts[Math.floor(s.pts.length/2)]);
+    el('circle',{cx:m[0],cy:m[1],r:18,fill:'rgba(29,27,24,.12)',stroke:'#1d1b18','stroke-width':1.5},hl);
+    el('circle',{cx:m[0],cy:m[1],r:7,fill:'#fff',stroke:'#1d1b18','stroke-width':3},hl);
+  }
+  if(LINK.prof){
+    const {X,Y,mi,ft,T,B,H,hl}=LINK.prof, xm=X((mi[i]+mi[i+1])/2), ym=Y((ft[i]+ft[i+1])/2);
+    el('line',{x1:xm,x2:xm,y1:T,y2:H-B,stroke:'#1d1b18','stroke-width':1.5,'stroke-dasharray':'3 3'},hl);
+    el('line',{x1:X(mi[i]),y1:Y(ft[i]),x2:X(mi[i+1]),y2:Y(ft[i+1]),stroke:'#1d1b18','stroke-width':9,'stroke-linecap':'round'},hl);
+    el('line',{x1:X(mi[i]),y1:Y(ft[i]),x2:X(mi[i+1]),y2:Y(ft[i+1]),stroke:col,'stroke-width':5,'stroke-linecap':'round'},hl);
+    el('circle',{cx:xm,cy:ym,r:6,fill:'#fff',stroke:'#1d1b18','stroke-width':3},hl);
+  }
+  pick.innerHTML=`<b>Mile ${d.mi.toFixed(2)}</b>`+(d.ft?` · ${d.ft.toLocaleString()} ft`:'')+` · ${d.grade}% grade · heading ${d.heading}`+
+    (d.t!=null?` · <b class="${d.t>=0?'pos':'neg'}">${Math.abs(d.t).toFixed(1)} mph ${d.t>=0?'tailwind':'headwind'}</b>`:'')+
+    (LINK.pinned!=null?` <button class="ghost" id="unpin" style="padding:3px 10px;font-size:12px;margin-left:6px">Clear</button>`:'');
+  const u=$('unpin'); if(u) u.addEventListener('click',()=>linkPin(null));
+}
+
 function drawMap(res, winds){
   const box=$('map'); box.innerHTML='';
   const W=600,H=460,pad=34;
@@ -361,15 +410,19 @@ function drawMap(res, winds){
   for(let gy=0;gy<=H;gy+=40) el('line',{x1:0,y1:gy,x2:W,y2:gy,stroke:'#efe7d8','stroke-width':1},svg);
   // casing
   el('polyline',{points:SEGS.pts.map(p=>P(p).join(',')).join(' '),fill:'none',stroke:'#fff','stroke-width':14,'stroke-linecap':'round','stroke-linejoin':'round'},svg);
+  LINK.res=res; LINK.map={P, svg};
+  const ptsStr=s=>s.pts.map(q=>P(q).join(',')).join(' ');
   SEGS.segs.forEach((s,i)=>{
     const t=res?res.tails[i]:0;
-    const ln=el('polyline',{points:s.pts.map(q=>P(q).join(',')).join(' '),fill:'none',stroke:res?tailColor(t):'#b9b2a6','stroke-width':8,'stroke-linecap':'round','stroke-linejoin':'round'},svg);
-    if(res){
-      const mi=(s.d1/1609.34).toFixed(2);
-      ln.addEventListener('mousemove',e=>showTip(e,`mile ${mi} · heading ${compass(bearing(s.pts[0],s.pts[s.pts.length-1]))}<br>${t>=0?'tailwind':'headwind'} ${Math.abs(t).toFixed(1)} mph · ${(s.grade*100).toFixed(1)}%`));
-      ln.addEventListener('mouseleave',hideTip);
-    }
+    el('polyline',{points:ptsStr(s),fill:'none',stroke:res?tailColor(t):'#b9b2a6','stroke-width':8,'stroke-linecap':'round','stroke-linejoin':'round'},svg);
   });
+  LINK.map.hl=el('g',{'pointer-events':'none'},svg);
+  // wide invisible hit targets so the road is easy to hover or tap
+  SEGS.segs.forEach((s,i)=>{
+    const hit=el('polyline',{points:ptsStr(s),fill:'none',stroke:'transparent','stroke-width':24,'stroke-linecap':'round','stroke-linejoin':'round',style:'cursor:pointer'},svg);
+    bindLink(hit,i);
+  });
+  svg.addEventListener('click',()=>linkPin(null));
   // local wind arrows at sample points
   if(winds){
     SAMPLES.forEach((p,i)=>{
@@ -422,9 +475,14 @@ function drawProfile(res){
     const t=res?res.tails[i]:0;
     el('path',{d:`M${X(mi[i])},${Y(ft[i])} L${X(mi[i+1])},${Y(ft[i+1])} L${X(mi[i+1])},${H-B} L${X(mi[i])},${H-B}Z`,fill:res?tailColor(t):'#d8d0c2',opacity:.35},svg);
     const ln=el('line',{x1:X(mi[i]),y1:Y(ft[i]),x2:X(mi[i+1]),y2:Y(ft[i+1]),stroke:res?tailColor(t):'#9a9184','stroke-width':4,'stroke-linecap':'round'},svg);
-    const hit=el('rect',{x:X(mi[i]),y:T,width:Math.max(1,X(mi[i+1])-X(mi[i])),height:H-T-B,fill:'transparent'},svg);
-    if(res){ hit.addEventListener('mousemove',e=>showTip(e,`mile ${mi[i].toFixed(2)}${hasE?` · ${Math.round(ft[i]).toLocaleString()} ft`:''}<br>${t>=0?'tailwind':'headwind'} ${Math.abs(t).toFixed(1)} mph · ${(s.grade*100).toFixed(1)}%`)); hit.addEventListener('mouseleave',hideTip); }
   });
+  LINK.prof={X,Y,mi,ft,T,B,H,svg,hasE};
+  LINK.prof.hl=el('g',{'pointer-events':'none'},svg);
+  segs.forEach((s,i)=>{
+    const hit=el('rect',{x:X(mi[i]),y:T,width:Math.max(1,X(mi[i+1])-X(mi[i])),height:H-T-B,fill:'transparent',style:'cursor:pointer'},svg);
+    bindLink(hit,i);
+  });
+  svg.addEventListener('click',()=>linkPin(null));
   if(!hasE){ const t=el('text',{x:W/2,y:T+14,'font-size':11,'text-anchor':'middle',fill:'#9a9184'},svg); t.textContent='(elevation unavailable: shape assumes 5.4% average)'; }
   // stats
   let gain=0; for(let i=1;i<ft.length;i++) if(ft[i]>ft[i-1]) gain+=ft[i]-ft[i-1];
@@ -458,7 +516,7 @@ function renderNow(){
   $('rGustD').textContent=mg>=30?'hold on to your bars':'max along the climb';
   $('rTime').innerHTML=`<span class="${res.delta<=0?'pos':'neg'}">${fmtSec(res.delta)}</span>`;
   $('calmTime').textContent=`Calm-air estimate: ${fmtClock(res.tCalm)} · today: ${fmtClock(res.tWind)}`;
-  drawMap(res,winds); drawProfile(res);
+  drawMap(res,winds); drawProfile(res); linkShow(LINK.pinned);
 }
 
 function renderHourly(){
@@ -550,7 +608,7 @@ function boot(){
   const elev = ROUTE_ELEV.length===boundaryIdx(ROUTE_PTS.length).length ? smooth(ROUTE_ELEV,5) : null;
   SEGS=buildSegments(ROUTE_PTS,elev);
   SAMPLES=windSamplePoints(ROUTE_PTS);
-  drawMap(null,null); drawProfile(null);
+  drawMap(null,null); drawProfile(null); linkShow(null);
   refreshWind();
 }
 // The terrain model is coarse next to switchbacks; a light moving average keeps grades sane.
